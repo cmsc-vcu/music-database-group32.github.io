@@ -15,7 +15,7 @@ format:
 
 ## Source Repository
 
-[Music Database Reposity](https://github.com/cmsc-vcu/cmsc508-fa2023-prj-music-database-group32)
+[Music Database Repository](https://github.com/cmsc-vcu/cmsc508-fa2023-prj-music-database-group32)
 
 
 ## Videos
