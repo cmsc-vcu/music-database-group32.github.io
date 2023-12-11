@@ -1,5 +1,4 @@
 ---
-title: Music Database
 date: 12/10/2023
 author: Rachel Farzan, Javeria Hanif, Feyza Sakin
 format:
@@ -9,15 +8,17 @@ format:
         embed-resources: true
 ---
 
+# Music Database 
+
 - contains final project report 
 - update readme
 
-# Source Repository
+## Source Repository
 
 [Music Database Reposity](https://github.com/cmsc-vcu/cmsc508-fa2023-prj-music-database-group32)
 
 
-# Videos
+## Videos
 
 [Deliverable 3 Video](https://vcu.mediaspace.kaltura.com/media/Project+Deliverable+3+-+Version+2/1_thnnkrtm)
 
@@ -25,7 +26,7 @@ format:
 
 [Deliverable 7 Video]()
 
-# HTML Documents
+## HTML Documents
 
 [Deliverable 4 HTML](https://github.com/cmsc-vcu/cmsc508-fa2023-prj-music-database-group32/blob/main/reports/Deliverable4.html)
 
