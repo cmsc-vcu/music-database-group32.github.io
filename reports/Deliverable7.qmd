@@ -1,0 +1,1646 @@
+---
+title: Deliverable 7
+date: 12/11/2023
+author: Rachel Farzan, Javeria Hanif, Feyza Sakin
+format:
+    html:
+        theme: 
+                light: minty
+                dark: slate
+        toc: true
+        embed-resources: true
+
+---
+
+# Section: Deliverable 7 
+
+## Description 
+
+This final report serves as an extension to deliverable 4. It covers everything about our project, from the beginning to the end. It includes important things like the project description, analysis of the problem, diagrams, schemas, notes on normalization, queries, sample data, API definition, SQL code, thoughts about the future, what the team thinks, and links to GitHub, videos, HTML, and more.
+
+## Links to your source code 
+
+[DDL](https://github.com/cmsc-vcu/cmsc508-fa2023-prj-music-database-group32/blob/main/src/Group%20Project%20Database.session.sql)
+
+[API](https://github.com/cmsc-vcu/cmsc508-fa2023-prj-music-database-group32/blob/main/src/app.py)
+
+### Github Page 
+
+[Github.io](https://github.com/cmsc-vcu/music-database-group32.github.io)
+
+### Source Repository
+
+[Music Database Repository](https://github.com/cmsc-vcu/cmsc508-fa2023-prj-music-database-group32)
+
+### Videos
+
+[Deliverable 3 Video](https://vcu.mediaspace.kaltura.com/media/Project+Deliverable+3+-+Version+2/1_thnnkrtm)
+
+[Deliverable 4 Video](https://vcu.mediaspace.kaltura.com/media/Project+Deliverable+4/1_xyo18fcy)
+
+[Deliverable 7 Video](https://vcu.mediaspace.kaltura.com/media/Deliverable+7/1_nwcbdq5x)
+
+### HTML Documents
+
+[Deliverable 4 HTML](https://github.com/cmsc-vcu/cmsc508-fa2023-prj-music-database-group32/blob/main/reports/Deliverable4.html)
+
+[Deliverable 7 HTML](https://github.com/cmsc-vcu/cmsc508-fa2023-prj-music-database-group32/blob/main/reports/Deliverable7.html)
+
+## API definition: 
+
+### Setting up the environment
+
+```{python}
+#| eval: true
+#| echo: false
+
+import os
+import sys
+import pandas as pd
+from tabulate import tabulate
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import ArgumentError, NoSuchModuleError
+from IPython.display import display, Markdown
+import requests
+from utils import hello_from_utils, api_call, api_query
+from datetime import datetime
+from IPython.display import display,Markdown,HTML
+
+endpoint = "http://localhost:5000"
+
+display(Markdown(f"""<div class="output">{hello_from_utils()}</div>"""))
+print(hello_from_utils())
+```
+
+### Configuring .env 
+
+```{python}
+#| eval: true
+#| echo: true
+
+# make sure to add FLASK_DATABASE to your .env file
+config_map = {
+    'user':'CMSC508_USER',
+    'password':'CMSC508_PASSWORD',
+    'host':'CMSC508_HOST',
+    'database':'FLASK_DATABASE'
+}
+# load and store credentials
+load_dotenv()
+config = {}
+for key in config_map.keys():
+    config[key] = os.getenv(config_map[key])
+flag = False
+for param in config.keys():
+    if config[param] is None:
+        flag = True
+        print(f"Missing {config_map[param]} in .env file")
+
+# build a sqlalchemy engine string
+engine_uri = f"mysql+pymysql://{config['user']}:{config['password']}@{config['host']}/{config['database']}"
+
+```
+
+### Database Connection 
+
+```{python}
+try:
+    conn = create_engine(engine_uri)
+except ArgumentError as e:
+    print(f"create_engine: Argument Error: {e}")
+    #sys.exit(1)
+except NoSuchModuleError as e:
+    print(f"create_engine: No Such Module Error: {e}")
+    #sys.exit(1)
+except Exception as e:
+    print(f"create_engine: An error occurred: {e}")
+    #sys.exit(1)
+```    
+
+### Helper routines 
+
+```{python}
+def my_sql_statement( statement ):
+    """ used with DDL, when the statement doesn't return any results. """
+    try:
+        with conn.begin() as x:
+            x.execute(text(statement))
+            x.commit()
+        result = ""
+    except Exception as e:
+        result = f"Error: {str(e)}"
+    return result
+
+def my_sql_wrapper( query ):
+    """ takes a query and returns a pandas dataframe for output """
+    try:
+        df = pd.read_sql( query, conn )
+    except Exception as e:
+        df = pd.DataFrame({'Query error': ["(see error message above)"]})
+        msg = str(e).replace(") (",")\n(")
+        print(msg)
+    return df
+
+def testExecution(executionResult):
+    rows = executionResult.fetchall()
+    print("rows: ", rows)
+    print()
+    if rows:
+        columns = executionResult.keys()
+        print("columns: ", columns)
+        return [dict(zip(columns, row)) for row in rows]
+    else:
+        return 0
+
+def testKey(user_key):
+    query = text("SELECT account_type FROM user WHERE user_key = :user_key;")
+    result = db.session.execute(query, {'user_key': user_key})
+    user_data = [{'user_key': user.user_key} for user in result]
+    if(not user_data):
+        return 0
+    return user_data[0].get('user_key')
+
+```
+
+## API in action 
+
+### Logging into an account:
+```{python}
+api_url = "http://localhost:5000/login"
+
+update_data = {
+    "username": "taylor_swift",
+    "password": "taylorpass1"
+}
+
+# Make a PATCH or PUT request
+response = requests.patch(api_url, json=update_data)  # Use 'put' for a PUT request
+
+# Check the response
+print("Logging in as free user")
+if response.status_code == 200:
+    print("User logged in successfully")
+    print(response.json())
+    myList = response.json().get('message').split()
+    myKey = myList[9]
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+```
+
+### Viewing users:
+
+```{python}  
+api_url1 = "http://localhost:5000/users"
+api_url2 = "http://localhost:5000/users?key=" + myKey
+api_url3 = "http://localhost:5000/users?key=" + myKey + "&account_type=free"
+api_url4 = "http://localhost:5000/users?key=badkey&account_type=premium"
+
+print("Get users with no key")
+response = requests.get(api_url1)
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("Get users with proper key")
+response = requests.get(api_url2)
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("Get users with proper key and filter")
+response = requests.get(api_url3)
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("Get users with improper key")
+response = requests.get(api_url4)
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+```
+
+### Viewing users by ID: 
+
+```{python}  
+api_url1 = "http://localhost:5000/users/2?key=" + myKey
+api_url2 = "http://localhost:5000/users/25?key=" + myKey
+
+print("Get user with ID 2")
+response = requests.get(api_url1)
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("Get user with id 25")
+response = requests.get(api_url2)
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+```
+
+### Viewing artists:
+
+```{python}  
+api_url1 = "http://localhost:5000/artists?key=" + myKey
+api_url2 = "http://localhost:5000/artists?key=" + myKey + "&name=B"
+
+print("Getting artists with no filters")
+response = requests.get(api_url1)
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("Getting artists with filters")
+response = requests.get(api_url2)
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+```
+
+### Viewing songs:
+
+```{python}  
+api_url1 = "http://localhost:5000/songs?user_key=" + myKey
+api_url2 = "http://localhost:5000/songs?name=love&user_key=" + myKey
+api_url3 = "http://localhost:5000/songs?user_key=" + myKey + "&album=1989&key=C"
+api_url4 = "http://localhost:5000/songs?user_key=badkey"
+
+print("Get all songs")
+response = requests.get(api_url1)
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("Get songs with 1 filter: name = love")
+response = requests.get(api_url2)
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("Get songs with 2 filters: album = 1989 and key = c")
+response = requests.get(api_url3)
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("Get songs with improper key")
+response = requests.get(api_url4)
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+```
+
+### Adding songs:
+
+```{python}
+api_url = "http://localhost:5000/add_song"
+
+# Data to be sent in the POST request
+song_data1 = {
+    "name": "New Song",
+    "tempo": 100,
+    "key": "C",
+    "plays": 100,
+    "duration": "3:30",
+    "album_id": 1,
+    "user_key": myKey
+}
+song_data2 = {
+    "name": "My Other Song",
+    "tempo": 100,
+    "key": "C",
+    "plays": 100,
+    "duration": "3:30",
+    "album_id": 1,
+    "user_key": myKey
+}
+
+print("Adding a song to album 1: 1989")
+response = requests.post(api_url, json=song_data1)
+# Check the response
+if response.status_code == 201:
+    print("Song added successfully")
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("Adding another song to album 1: 1989")
+response = requests.post(api_url, json=song_data2)
+# Check the response
+if response.status_code == 201:
+    print("Song added successfully")
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+```
+
+### Deleting a song:
+
+```{python}
+# Replace with the actual URL and song ID
+api_url = "http://localhost:5000/delete_song/481?key=" + myKey
+
+print("Deleting the song we just added")
+response = requests.delete(api_url)
+# Check the response
+if response.status_code == 201:
+    print("Song deleted successfully")
+    print(response.json())
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("It cannot be deleted again")
+response = requests.delete(api_url)
+# Check the response
+if response.status_code == 201:
+    print("Song deleted successfully")
+    print(response.json())
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+```
+
+### Viewing playlists
+
+```{python}
+api_url1 = "http://localhost:5000/playlists?key=" + myKey
+api_url2 = "http://localhost:5000/playlists?key=" + myKey + "&name=B"
+
+
+print("Getting playlists with no filters")
+response = requests.get(api_url1)
+
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("\nGetting playlists with filters")
+response = requests.get(api_url2)
+
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+```
+
+### Adding a playlist:
+
+```{python}
+
+# Define the API endpoint for adding a playlist
+api_url1 = "http://localhost:5000/add_playlist?key=" + myKey
+
+# playlist data
+playlist_data = {
+    'name': 'My Awesome Playlist',
+    'description': 'A collection of my favorite songs',
+    'duration': '01:30:00',  
+    'user_ID': 1 
+}
+
+# Send a POST request to add the playlist
+response1 = requests.post(api_url1, json=playlist_data)
+
+# Check the response
+if response1.status_code == 201:
+    print("Playlist added successfully!")
+else:
+    print(f"Error: {response1.status_code} - {response1.text}")
+
+# Now, let's retrieve all playlists after adding one
+api_url2 = "http://localhost:5000/playlists?key=" + myKey
+
+print("\nGetting playlists after adding one")
+response2 = requests.get(api_url2)
+
+# Check the response
+if response2.status_code == 200:
+    playlists = response2.json()
+    print(playlists)
+else:
+    print(f"Error: {response2.status_code} - {response2.text}")
+
+```
+
+### Deleting a playlist:
+
+```{python}
+api_url = "http://localhost:5000/playlists/1?key=" + myKey
+
+print("Deleting the playlist we just added")
+response = requests.delete(api_url)
+# Check the response
+if response.status_code == 204:
+    print("Playlist deleted successfully")
+    print(response.json())
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("It cannot be deleted again")
+response = requests.delete(api_url)
+# Check the response
+if response.status_code == 204:
+    print("Playlist deleted successfully")
+    print(response.json())
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+```
+
+### Updating a playlist:
+
+```{python}
+api_url = "http://localhost:5000/update_song/50"
+
+update_data = {
+    'name': 'Updated Playlist Name',
+    'description': 'Updated playlist description',
+    'duration': '02:15:00',  
+    'user_ID': 3,  
+    "user_key": myKey
+}
+
+# Make a PATCH or PUT request
+response = requests.patch(api_url, json=update_data)  
+
+# Check the response
+if response.status_code == 200:
+    print("Playlist updated successfully")
+    print(response.json())
+elif response.status_code == 404:
+    print("Playlist not found")
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+```
+
+### Viewing albums:
+
+```{python}
+api_url1 = "http://localhost:5000/albums?key=" + myKey
+api_url2 = "http://localhost:5000/albums?key=" + myKey + "&name=B"
+
+
+print("Getting albums with no filters")
+response = requests.get(api_url1)
+
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("\nGetting albums with filters")
+response = requests.get(api_url2)
+
+# Check the response
+if response.status_code == 200:
+    print(response.json())  # Assuming the response is in JSON format
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+```
+
+### Adding an album:
+
+```{python}
+
+# Define the API endpoint for adding a album
+api_url1 = "http://localhost:5000/add_album?key=" + myKey
+
+# album data
+album_data = {
+    'name': 'Barbie: The Album',
+    'record_label': 'Atlantic Records',
+    'genre': 'Pop',
+    'release_date': '2023-07-21',  
+    'classification': 'Album',
+    'duration': '00:45:00',  
+    'artist_ID': 17  
+}
+
+# Send a POST request to add the album
+response1 = requests.post(api_url1, json=album_data)
+
+# Check the response
+if response1.status_code == 201:
+    print("Album added successfully!")
+else:
+    print(f"Error: {response1.status_code} - {response1.text}")
+
+# Now, let's retrieve all albums after adding one
+api_url2 = "http://localhost:5000/albums?key=" + myKey
+
+print("\nGetting albums after adding one")
+response2 = requests.get(api_url2)
+
+# Check the response
+if response2.status_code == 200:
+    albums = response2.json()
+    print(albums)
+else:
+    print(f"Error: {response2.status_code} - {response2.text}")
+
+```
+
+### Deleting an album:
+
+```{python}
+api_url = "http://localhost:5000/albums/17?key=" + myKey
+
+print("Deleting the album we just added")
+response = requests.delete(api_url)
+# Check the response
+if response.status_code == 204:
+    print("Album deleted successfully")
+    print(response.json())
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+
+print("It cannot be deleted again")
+response = requests.delete(api_url)
+# Check the response
+if response.status_code == 204:
+    print("Album deleted successfully")
+    print(response.json())
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+```
+
+### Create User API calls
+```{python}
+print("Creating a user:")
+# Define the API endpoint
+create_user_api_url = "http://localhost:5000/create_user"
+
+# User name, password, and account_type to create a new user
+user_name = "FSakin"
+password = "new_user_API_call"  
+account_type = "free"
+
+# New User's info
+create_user_new_user = {
+    "user_name": user_name,
+    "password": password,
+    "account_type": account_type
+}
+
+# Make a request to the create_user endpoint to create a new user called "FSakin" with "new_user_API_call" password and account_type as "free"
+create_user_response = requests.post(create_user_api_url, json=create_user_new_user)
+
+# Get a response from the endpoint if the user is created successfully
+if create_user_response.status_code == 200:
+    print(create_user_response.json());  
+else:
+   print(f"Error: {create_user_response.status_code} - {create_user_response.text}")
+```
+
+### Create Artist API Calls
+```{python}
+print("Creating an artist:")
+# URLs to create an artist
+create_artist_api_url = "http://localhost:5000/create_artist"
+
+# Artist name, birth_date, debut_date, description, and user_ID to create a new artist using Taylor Swift's User ID
+artist_name = "API_artist_(Taylor_Swifts_Version)";
+artist_birth_date = "2023-01-01";
+artist_debut_date = "2023-12-11";
+artist_description = "An API artist created for a call";
+artist_user_ID = 4;
+
+# New Artist's Info
+create_new_artist_info = {
+    "name": artist_name,
+    "birth_date": artist_birth_date,
+    "debut_date": artist_debut_date,
+    "description": artist_description,
+    "user_ID": artist_user_ID
+}
+
+# Make a request to the create_artist endpoint to create a new artist
+create_artist_response = requests.post(create_artist_api_url, json=create_new_artist_info);
+
+# Get a response from the endpoint if the artist is created successfully
+if create_artist_response.status_code == 200:
+    print(create_artist_response.json())
+else:
+    print(f"Error: {create_artist_response.status_code} - {create_artist_response.text}")
+
+```
+
+### Get an artist w an ID
+```{python}
+print("Getting an artist:")
+
+# The URL to find the artist with 1 as their ID
+get_artistByID_api_url = "http://localhost:5000/artists/1"
+
+# Add key to the URL 
+get_artistByID_with_key = get_artistByID_api_url + "?key=myKey"
+
+# Send a request to the URL to get the artist with 1 as their ID
+get_artistByID_response_with_key = requests.get(get_artistByID_with_key)
+
+# Get a response from the endpoint if the artist is shown w their ID
+if get_artistByID_response_with_key.status_code == 200:
+    print(get_artistByID_response_with_key.json())
+else:
+    print(f"Error: {get_artistByID_response_with_key.status_code} - {get_artistByID_response_with_key.text}")
+```
+
+### Update the user
+```{python}
+print("Updating a user:")
+# The URL to update the user with 2 ID 
+update_user_api_url = "http://localhost:5000/update_user/2"
+
+# The URL with the key
+update_user_with_key = update_user_api_url + "?key=myKey"
+
+# Updated information on the user
+updated_user_name = "updated_name_with_API";
+updated_password = "API_update_user";
+updated_account_type = "premium";
+
+# User details to update the user
+updated_info = {
+    "user_name": updated_user_name,
+    "password": updated_password,
+    "account_type": updated_account_type
+}
+
+# Send a request to the endpoint to make changes for the user with 2 as ID
+update_user_response = requests.put(update_user_with_key, json=updated_info)
+
+# If the update is done successfully, get a success message
+if update_user_response.status_code == 200:
+    print(update_user_response.json())
+else:
+    print(f"Error: {update_user_response.status_code} - {update_user_response.text}")
+```
+
+### Update artist
+```{python}
+print("Updating an artist:")
+# The URL to update the artist with 2 as their ID
+update_artist_api_url = "http://localhost:5000/update_artist/1"
+
+# The URL with the key
+update_artist_with_key = update_artist_api_url + "?key=myKey"
+
+# Update informations
+updated_artist_name = "updated_artist_name_with_API";
+updated_artist_birth_date = "1995-05-05"
+updated_artist_description = "Updated description using an API call",
+updated_artist_debut_date = "2000-01-01", 
+updated_artist_userID = 4 
+
+# Artist with updated info
+updated_artist_details = {
+    "name": updated_artist_name,
+    "birth_date": updated_artist_birth_date,
+    "description": updated_artist_description,
+    "debut_date": updated_artist_debut_date,
+    "user_ID": updated_artist_userID
+}
+
+# Send a request to the endpoint to change information for the artist with 2 as ID
+update_artist_response = requests.put(update_artist_with_key, json=updated_artist_details)
+
+# Get a success response if the request is done successfully
+if update_artist_response.status_code == 200:
+    print(update_artist_response.json())
+else:
+    print(f"Error: {update_artist_response.status_code} - {update_artist_response.text}")
+```
+
+### Delete a user
+```{python}
+print("Delete a user:")
+# The URL to delete the user with 51 as their ID
+delete_user_api_url = "http://localhost:5000/delete_user/1"
+
+# URL with the key
+delete_user_with_key = delete_user_api_url + "?key=myKey"
+
+# Send a request to the endpoint to delete the user with 1 as their ID
+delete_user_response_with_key = requests.delete(delete_user_with_key)
+
+# Get a response from the endpoint if the user w 1 as their ID is deleted
+if delete_user_response_with_key.status_code == 200:
+    print(delete_user_response_with_key.json())
+else:
+    print(f"Error: {delete_user_response_with_key.status_code} - {delete_user_response_with_key.text}")
+```
+
+### Delete artist w 1 as their artist_ID
+```{python}
+print("Deleting an artist:")
+# The URL to delete the artist with 1 as their ID
+delete_artist_api_url = "http://localhost:5000/delete_artist/1"
+
+# The URL with the key
+delete_artist_with_key = delete_artist_api_url + "?key=myKey"
+
+# Send a request to the endpoint to delete the artist with 1 as their ID
+delete_artist_response = requests.delete(delete_artist_with_key)
+
+# Get a response from the endpoint if the artist w 1 as their ID is 
+if delete_artist_response.status_code == 200:
+    print(delete_artist_response.json())
+else:
+    print(f"Error: {delete_artist_response.status_code} - {delete_artist_response.text}")
+```
+
+### Logging out of an account:
+
+```{python}
+api_url = "http://localhost:5000/logout"
+
+# Data to update the song
+update_data = {
+    "key": myKey
+}
+
+# Make a PATCH or PUT request
+response = requests.patch(api_url, json=update_data)  # Use 'put' for a PUT request
+
+# Check the response
+if response.status_code == 200:
+    print("User logged out successfully")
+    print(response.json())
+elif response.status_code == 404:
+    print("Song not found")
+else:
+    print(f"Error: {response.status_code} - {response.text}")
+```
+
+## SQL Queries
+
+1. What is the description for Bruno Mars?
+```{python}
+
+my_sql_wrapper("""
+SELECT description
+FROM artist
+WHERE name = 'Bruno Mars';
+""")
+
+```
+
+2. What are the name of the every album by Bruno Mars?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT album.name AS album_name
+FROM album
+JOIN artist ON album.artist_ID = artist.ID
+WHERE artist.name = 'Bruno Mars';
+""")
+
+```
+
+3. What is the account type for the user, music_lover?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT account_type
+FROM user
+WHERE user_name = 'music_lover';
+""")
+
+```
+
+4. What is the user ID for the username music_lover? 
+
+```{python}
+
+my_sql_wrapper("""
+SELECT ID AS user_id
+FROM user
+WHERE user_name = 'music_lover';
+""")
+
+```
+
+5. What is the password for the user music_lover?
+
+```{python}
+
+
+my_sql_wrapper("""
+SELECT password
+FROM user
+WHERE user_name = 'music_lover';
+""")
+
+```
+
+6. What are the names of every playlist created by music_lover?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT name AS playlist_name
+FROM playlist
+JOIN user ON playlist.user_ID = user.ID
+WHERE user.user_name = 'music_lover';
+""")
+
+```
+
+7. What is the tempo of ‘Too Good to Say Goodbye’ from the ‘24K Magic’ album?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT s.tempo
+FROM song s
+JOIN album a ON s.album_ID = a.ID
+WHERE s.name = 'Too Good to Say Goodbye' AND a.name = '24K Magic';
+""")
+
+```
+
+8. What are all songs in the key of C with the tempo of 120 bpm?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT name AS song_name
+FROM song
+WHERE song_key = 'C' AND tempo = 120;
+""")
+
+```
+
+9. What is the birthdate and debut date of Lady Gaga?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT birth_date, debut_date, name
+FROM artist
+WHERE name = 'Lady Gaga';
+""")
+
+```
+
+10. Find artists who have a debut date after 2000 and have released albums in the ‘Pop’ genre.
+
+```{python}
+
+my_sql_wrapper("""
+SELECT DISTINCT artist.name AS artist_name
+FROM artist
+JOIN album ON artist.ID = album.artist_ID
+WHERE artist.debut_date > '2000-01-01'
+AND album.genre = 'Pop';
+""")
+
+```
+
+11. Which artists have more than 8 million plays on their songs.
+
+```{python}
+
+my_sql_wrapper("""
+SELECT DISTINCT artist.name AS artist_name
+FROM artist
+JOIN song ON artist.ID = song.artist_ID
+WHERE song.plays > 8000000;
+""")
+```
+
+12. What is the classification of the album 'After Hours' by The Weeknd?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT album.name, artist.name, classification
+FROM album
+JOIN artist ON album.artist_ID = artist.ID
+WHERE artist.name = 'The Weeknd' AND album.name = 'After Hours';
+""")
+```
+
+13. What’s the follower count of Taylor Swift?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT COUNT(DISTINCT follower_ID) AS follower_count
+FROM following
+JOIN artist ON following.following_ID = artist.ID
+WHERE artist.name = 'Taylor Swift';
+""")
+```
+
+14. What songs on user music_lover's playlist were released in 2014?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT song.name AS song_name
+FROM song
+JOIN album ON song.album_ID = album.ID
+JOIN playlist_song ON song.ID = playlist_song.song_ID
+JOIN playlist ON playlist_song.playlist_ID = playlist.ID
+JOIN user ON playlist.user_ID = user.ID
+WHERE user.user_name = 'music_lover' AND YEAR(album.release_date) = YEAR('2014-01-01');
+""")
+```
+
+15. How many of user john_smith's followers do they follow back?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT COUNT(*) AS follow_back
+FROM following AS f1
+JOIN following AS f2 ON f1.follower_ID = f2.following_ID AND f1.following_ID = f2.follower_ID
+WHERE f1.follower_ID = (SELECT ID FROM user WHERE user_name = 'john_smith');
+""")
+```
+
+16. What percentage of non-artist users have a premium account?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT
+(COUNT(CASE WHEN 
+account_type = 'premium' THEN 1 END) / COUNT(*) * 100) AS premium_percentage
+FROM user
+WHERE account_type IN ('free', 'premium', 'artist') AND account_type <> 'artist';
+""")
+```
+
+17. How many artists have released music under the "Atlantic Records" record label?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT COUNT(DISTINCT artist.ID) AS artist_count
+FROM artist
+JOIN album ON artist.ID = album.artist_ID
+WHERE album.record_label = 'Atlantic Records';
+""")
+```
+
+18. What is Beyonce's least popular song?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT name AS least_popular_song
+FROM song
+WHERE artist_ID IN (SELECT ID FROM artist WHERE name = 'Beyonce')
+ORDER BY plays ASC
+LIMIT 1;
+""")
+```
+
+19. What's the longest hip hop song?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT
+song.name AS longest_hip_hop_song_name,
+song.duration AS longest_hip_hop_song_duration
+FROM song
+JOIN album ON song.album_ID = album.ID
+WHERE album.genre = 'Hip Hop'
+ORDER BY song.duration DESC
+LIMIT 1;
+""")
+```
+
+20. Which songs feature Nicki Minaj?
+
+```{python}
+
+my_sql_wrapper("""
+SELECT
+    song.name
+FROM
+    (
+        song JOIN artist_song ON song.ID = artist_song.song_ID
+    )
+    JOIN artist ON artist_song.artist_ID = artist.ID
+WHERE
+    artist_song.artist_ID = (SELECT ID FROM artist WHERE name = 'Nicki Minaj') AND NOT song.artist_ID = (SELECT ID FROM artist WHERE name = 'Nicki Minaj');
+""")
+```
+
+## Reflection
+
+The project was harder than I expected. Building the database took a lot more time than anticipated, so I wish we had more time or had learned the complexities earlier. I also found some aspects unclear during the database building, so I wish there were clearer instructions. Although I wanted to incorporate more queries, but we;re short on time so kept it simple. I believe our database aligns with initial plans, with may be a few minimal changes.
+
+If I had more time, I would try to organize the code and files in a better way. One thing that I am considering for the future is to create a website inspired by Spotify with our music database.
+
+# Section: Deliverable 4 
+
+## Problem Domain
+
+We aim to create a music database, focusing on the domain of music, which is defined as the combination of vocal or instrumental sounds to create beauty, harmony, and express emotion. Music has a rich history, initially serving purposes such as imitating nature, frightening predators, and aiding communication. Some argue that even in ancient times, music was used to convey emotions, a purpose it continues to serve today.
+
+Key historical milestones include the Hurrian Hymn No. 6, recognized as the world’s earliest melody, and the Seikilos Epitaph, the oldest known musical composition inscribed in Greek on a tombstone. Early musical notations were depicted with symbols above Greek characters. The concept of music classification, including genres, has evolved over time. The term “genre” was coined by Aristotle and Plato for literature, while Franco Fabbri proposed a comprehensive definition of “musical genre” in 1982.
+
+The development of music recording technology has played a crucial role. The first recorded album dates back to 1889, recorded by Emile Berliner using a gramophone. The digital era saw the creation of the first digital music store, the Internet Underground Music Archive, in 1993. The advent of personal devices like the iPod led to the rise of music streaming services such as Spotify and Apple Music, which track songs, artists, and albums. Legitimate databases like Jaxsta, MusicBrainz, and LastFM have emerged, providing comprehensive information, including BPM, key, and mood.
+
+## Need
+
+A music database is a useful discovery tool, suggesting new music and crafting personalized playlists based on user preferences like genre, tempo, and mood. It simplifies the organization of music collections, making it easier to sort and order songs. This is particularly helpful for users frustrated by scattered music across different devices and apps.
+
+Acting as a personal music library manager, the database makes searches for specific songs, genres, albums, artists, release years, and other music-related factors more efficient. Beyond enhancing the listening experience for general users, it’s especially beneficial for those in musical professions such as musicians, DJs, and songwriters. Additionally, it helps identify songs that complement each other, by looking at things like similar BPMs, for a more enjoyable and entertaining musical journey.
+
+## Context, scope and perspective
+
+This database is for everyone who loves music and wants to explore more about the songs they listen to. It’s especially beneficial for music enthusiasts, students, and musicians who seek detailed information like BPM, key, and time signatures. The database is a handy tool for language learners using song lyrics for practice.
+
+Users can search for songs based on mood and genre, making it a valuable resource for discovering new music aligned with their preferences. Whether you enjoy exploring different moods or discovering songs by specific genres or songwriters, this database caters to a diverse range of music lovers.
+
+## User roles and use cases
+
+The users of our music database fall into different roles. **Free listeners** enjoy basic features like shuffling and searching for songs, musicians, and albums. **Premium listeners**, on the other hand, get more, with the ability to create playlists and play specific songs. Meanwhile, **music artists**, in addition to premium features, can add songs and create albums. This tiered approach caters to varying needs, ensuring a simple and enjoyable experience for all users. The database will connect seamlessly with these user roles, allowing free and premium listeners to explore and organize their music, while encouraging music artists to contribute and manage their creations.
+
+## Security and Privacy
+
+In our music database, we prioritize security and privacy. Listeners are restricted from altering information beyond their playlists, ensuring controlled access. Similarly, artists are limited to modifying only their playlists. To safeguard user accounts, each person has usernames, passwords, and user IDs, employing robust user authentication measures. These precautions are integral to maintaining a secure and private environment for all users, assuring that their personal information and interactions within the database remain protected.
+
+## Entity-relationship diagram (ERD)
+
+### Chen Notation Diagram
+
+```{dot}
+graph ER {
+    layout=neato;
+    scale=2;
+    node [shape=box]; playlist, album, song, user, artist
+    node [shape=ellipse]; playlist_ID, playlist_name, user, description, album_ID, album_name, record_label, genre, song_ID, song_name, tempo, key, user_ID, user_name, password, account_type, plays, song_number, album_classification, playlist_description, album_duration, song_duration, release_date, birth_date, debut_date,playlist_duration, artist_name, artist_ID, follower_count, following_count
+    node [shape=diamond,style=filled,color=lightgrey]; has, "has ",is, " has", " has ", "  has ", following
+    
+    playlist -- has [label="0...n",len=1.00]
+    has -- song [label="0...n",len=1.00]
+
+    playlist -- "has " [label="0...n",len=1.00]
+    "has " -- user [label="1",len=1.00]
+
+    artist -- is [label="0...1",len=1.00]
+    is -- user [label="1",len=1.00]
+
+    artist -- " has" [label="1...n",len=1.00]
+    " has" -- album [label="1...n",len=1.00]
+
+    album -- " has " [label="1",len=1.00]
+    " has " -- song [label="1...n",len=1.00]
+
+    artist -- "  has " [label="1...n",len=1.00]
+    "  has " -- song [label="1...n",len=1.00]
+
+    user -- following [label="0...n",len=1.00]
+    following -- user [label="0...n",len=1.00]
+    
+    playlist -- playlist_ID
+    playlist -- playlist_name
+    playlist -- song_number
+    playlist -- playlist_description
+    playlist -- playlist_duration
+    
+    album -- album_ID
+    album -- record_label
+    album -- album_classification
+    album -- genre
+    album -- album_name
+    album -- album_duration
+    album -- release_date
+
+    song -- song_ID
+    song -- song_name
+    song -- tempo
+    song -- key
+    song -- plays
+    song -- song_duration
+
+    user -- user_ID
+    user -- user_name
+    user -- account_type
+    user -- password
+    user -- follower_count
+    user -- following_count
+
+    artist -- artist_ID
+    artist -- description
+    artist -- birth_date
+    artist -- debut_date
+    artist -- artist_name
+
+} 
+```
+
+### Crow's Foot Diagram
+```{mermaid}
+erDiagram
+    PLAYLIST }o--o{ SONG : has
+    ALBUM ||--|{ SONG : has
+    ARTIST }|--|{ ALBUM : has
+    USER ||--o{ PLAYLIST : has
+    ARTIST |o--|| USER : is
+    ARTIST }|--|{ SONG : has
+    USER }o--o{ USER : following 
+
+    PLAYLIST{
+        string ID PK
+        string name
+        string user_ID FK
+        string description
+        int duration
+        int song_number
+    }
+
+    ALBUM{
+        string ID PK
+        string name
+        string record_label
+        string genre
+        date release_date
+        string classification
+        int duration
+        string artist_ID FK
+    }
+
+    SONG{
+        string ID PK
+        string name
+        int tempo
+        string key
+        int plays
+        int duration
+        string artist_ID FK
+        string album_ID FK
+    } 
+
+    USER {
+        string ID PK
+        string user_name
+        string password
+        string account_type
+        int follower_count
+        int following_count
+    }
+
+    ARTIST {
+        string ID PK
+        string artist_name
+        date birth_date
+        string description
+        date debut_date
+    }
+
+
+```
+
+### Design Notes
+
+One thought that we had was to possibly have an album be a more specific type of playlist (a playlist that only an artist can make). However, we also wanted to include features that only playlists could have (i.e. discriptions). It also seemed unnecessary to connect albums and playlists, so we ultimately decided not to.
+
+We also had to consider which relationships to make many-to-many. Songs are often by multiple artist, so we made that relationship many-to-many. Though albums aren’t as often by multiple artist, we thought it would be the most consistent to also make that relationship many-to-many. Though songs can also be on multiple albums, they often show up as separate songs on music apps like Spotify, so we decided to keep that relationship as one-to-many.
+
+## Relational Schemas
+
+user (ID [PK], user_name [NOT_NULL, UNIQUE], password [NOT_NULL], account_type [(free, premium, artist)])
+
+artist (ID [PK], name [NOT_NULL], birth_date [NOT_NULL], description, debut_date [NOT_NULL])
+
+song (ID [PK], name [NOT_NULL], tempo, key, plays [NOT_NULL], duration [NOT_NULL], artist_ID [FK], album_ID [FK])
+
+album (ID [PK], name [NOT_NULL], record_label [NOT_NULL], genre, release_date [NOT_NULL], classification [NOT_NULL], duration [NOT_NULL], artist_ID[FK])
+
+playlist (ID [PK], name [NOT_NULL], description, duration [NOT_NULL], song_number [NOT_NULL], user_ID[FK])
+
+artist_song (ID [PK], artist_ID[FK], song_ID[FK])
+
+        FK(artist_ID) references artist.ID
+
+        FK(song_ID) references song.ID
+
+artist_album (ID [PK], artist_ID[FK], album_ID[FK])
+
+        FK(artist_ID) references artist.ID
+
+        FK(album_ID) references album.ID
+
+playlist_song (ID [PK], playlist_ID[FK], song_ID[FK])
+
+        FK(playlist_ID) references playlist.ID
+    
+        FK(song_ID) references song.ID
+
+
+following (ID [PK], follower_ID[FK], following_ID[FK])
+
+        FK(follower_ID) references user.ID
+
+        FK(following_ID) references user.ID
+
+## Functional Dependencies
+
+user (ID, user_name, password, account_type)
+
+        ID -> user_name, password, account_type
+
+artist (ID, name, birth_date, description, debut_date)
+
+        ID -> name, birth_date, description, debut_date
+
+song (ID, name, tempo, key, plays, duration, artist_ID, album_ID)
+
+        ID -> name, tempo, key, plays, duration, artist_ID, album_ID
+
+album (ID, name, record_label, genre, release_date, classification, duration, artist_ID)
+
+        ID -> name, record_label, genre, release_date, classification, duration, artist_ID
+
+playlist (ID, name, description, duration, song_number, user_ID)
+
+        ID -> name, description, duration, song_number, user_ID
+
+artist_song (ID, artist_ID, song_ID)
+
+        ID -> artist_ID, song_ID
+
+artist_album (ID, artist_ID, album_ID)
+
+        ID -> artist_ID, album_ID
+
+playlist_song (ID, playlist_ID, song_ID)
+
+        ID -> playlist_ID, song_ID
+
+following (ID, follower_ID, following_ID)
+
+        ID -> follower_ID, following_ID
+
+## Normalization 
+
+Our relations are already in BCNF, as each relation consist of 1 functional dependency, where the candidate key determines everything else in the relation.
+
+## Queries
+
+1. What is the description for Bruno Mars?
+$$
+\begin{aligned}
+& \pi_{description}(\sigma_{artist\_name = Bruno\_Mars}(artist))
+\end{aligned}
+$$
+
+2. What are the name of the every album by Bruno Mars?
+$$
+\begin{aligned}
+& \pi_{name}(album(\bowtie_{album.artist\_ID = artist.ID}(\sigma_{artist\_name = Bruno\_Mars}(artist))))
+\end{aligned}
+$$
+
+3. What is the account type for the user, music_lover?
+$$
+\begin{aligned}
+& \pi_{account\_type}(\sigma_{user\_name = music\_lover}(user))
+\end{aligned}
+$$
+
+4. What is the user ID for the username music_lover?
+$$
+\begin{aligned}
+& \pi_{ID}(\sigma_{user\_name = music\_lover}(user))
+\end{aligned}
+$$
+
+5. What is the password for the user music_lover?
+$$
+\begin{aligned}
+& \pi_{password}(\sigma_{user\_name = music\_lover}(user))
+\end{aligned}
+$$
+
+6. What are the names of every playlist created by music_lover?
+$$
+\begin{aligned}
+& \pi_{name}(playlist(\bowtie_{playlist.user\_ID = user.ID}(\sigma_{user\_name = music\_lover}(user))))
+\end{aligned}
+$$
+
+7. What is the tempo of ‘Too Good to Say Goodbye’ from the ‘24K Magic’ album?
+$$
+\begin{aligned}
+& \pi_{tempo}(\sigma_{name = Too\_Good\_to\_Say\_Goodbye}(song))\bowtie_{song.album\_ID = album.ID}
+\\
+& \ (\sigma_{album\_name = 24K\_Magic}(album))\bowtie_{album.artist\_ID = artist.ID}
+\\
+& \ (\sigma_{artist\_name = Bruno\_Mars}(artist))))
+\end{aligned}
+$$
+
+8. What are all songs in the key of C with the tempo of 120 bpm?
+$$
+\begin{aligned}
+& \pi_{name}(\sigma_{(key = C) ∧ (tempo = 120)}(song))
+\end{aligned}
+$$
+
+9. What is the birthdate and debut date of Alicia Keys?
+$$
+\begin{aligned}
+& \pi_{birth\_date,debut\_date}(\sigma_{artist\_name = Alicia Keys}(artist))
+\end{aligned}
+$$
+
+10. Find artists who have a debut date after 2000 and have released albums in the ‘Pop’ genre.
+ 
+$$
+\begin{aligned}
+& \pi_{artist\_name}(\sigma_{debut\_date.year > 2000}((artist) \bowtie_{artist.ID = album.artist\_ID} (\sigma_{genre = Pop}(album))))
+\end{aligned}
+$$
+
+11. Which artists have more than 1 million plays on their songs.
+
+$$
+\begin{aligned}
+& \pi_{artist\_name}((artist) \bowtie_{artist.ID = song.artist\_ID} (\sigma_{plays > 1000000}(song)))
+\end{aligned}
+$$
+
+12. What is the classification of the album ‘Dark Side of the Moon’ by Pink Floyd?
+ 
+$$
+\begin{aligned}
+& \pi_{classification}(\sigma_{artist.name = Pink Floyd}(\sigma_{album\_name = Dark Side of the Moon}(album) 
+\\
+& \bowtie_{artist.ID = album.artist\_ID}(artist)))
+\end{aligned}
+$$
+
+13. What’s the follower count of Taylor Swift?
+
+$$
+\begin{aligned}
+& \pi_{follower\_count}(\sigma_{user\_name = Taylor Swift}(user))
+\end{aligned}
+$$
+
+14. What songs on user music_lover's "favorites" playlist were released this year?
+$$
+\begin{aligned}
+& \pi_{name}(\sigma_{release\_date.year}(album)(song \bowtie_{song.ID = playlist.song\_ID} 
+\\
+& \ (playlist\_song \bowtie (\sigma_{name = favorites}(playlist) 
+\bowtie_{playlist.user\_ID = user.ID} 
+\\
+& \sigma_{name = music\_lover}(user)))))
+\end{aligned}
+$$
+
+15. How many of user john_smith's followers do they follow back?
+$$
+\begin{aligned}
+& \pi COUNT(*) (\sigma_{user.name = john\_smith} (user \bowtie_{following.following\_ID = user.ID} 
+\\
+& \ (following \bowtie_{following.follower\_ID = follower.following\_ID} (\rho_{follower}(\pi_{following.follower\_ID}
+\\
+& \ (\sigma_{user.name = john\_smith}(user \bowtie_{user.ID = following.follower\_ID} following)))))))
+\end{aligned}
+$$
+
+16. What percentage of non-artist users have a premium account?
+$$
+\begin{aligned}
+& \ ((\pi COUNT(*)(\sigma_{account\_type = premium}(user)))/
+\\
+& (\pi COUNT(*)(\sigma_{ㄱ(account\_type = artist)}(user)))) * 100
+\end{aligned}
+$$
+
+17. How many artists have released music under the "Universal Music" record label?
+$$
+\begin{aligned}
+& \pi COUNT(*) (\sigma_{record\_label = Universal Music}(artist \bowtie_{artist.ID = album.artist\_ID} album))
+\end{aligned}
+$$
+
+18. What is Beyonce's least popular song?
+$$
+\begin{aligned}
+& \pi MIN(plays) (\sigma_{artist.name = Beyonce}(song \bowtie_{song.artistID = artist.ID} artist))
+\end{aligned}
+$$
+
+19. What's the longest jazz song?
+$$
+\begin{aligned}
+& \pi MAX(song.duration) (\sigma_{genre = jazz}(song \bowtie_{song.albumID = album.ID} album))
+\end{aligned}
+$$
+
+20. How many songs feature Nicki Minaj?
+$$
+\begin{aligned}
+& \pi COUNT(*) (\sigma_{artist.name = Nicki Minaj}(artist \bowtie_{artist.ID = artist\_song.artist\_ID} artist\_song)) - 
+\\
+& \pi COUNT(*) (\sigma_{artist.name = Nicki Minaj}(song \bowtie_{song.artist\_ID = artist.ID} artist))
+\end{aligned}
+$$
+
+## Sample Data
+
+#### user (ID, user_name, password, account_type)
+
+| ID | username | password | account_type |
+| --- | --- | --- | --- |
+| 1 | user1 | pass1 | free |
+| 2 | user2 | pass2 | premium |
+| 3 | artist1 | pass3 | artist |
+| 4 | user3 | pass4 | free |
+| 5 | user4 | pass5 | premium |
+| 6 | artist2 | pass6 | artist |
+| 7 | user5 | pass7 | free |
+| 8 | user6 | pass8 | premium |
+| 9 | artist3 | pass9 | artist |
+| 10 | user7 | pass1 | free |
+
+#### artist (ID, name, birth_date, description, debut_date)
+
+|   ID   |     Name     |  Birth Date  |       Description       |  Debut Date  |
+|-------|-------------|--------------|-------------------------|-------------|
+|   3 | Artist Name 1| 1990-04-15   | Description 1 | 2010-08-20  |
+|   6 | Artist Name 2| 1985-11-30   | Description 2 | 2005-06-12  |
+|   9 | Artist Name 3| 1995-07-25   | Description 3 | 2012-03-05  |
+|   11 | Artist Name 4| 1982-02-10   | Description 4 | 2000-09-18  |
+|   12 | Artist Name 1| 1988-09-05   | Description 5 | 2008-12-24  |
+|   15 | Artist Name 5| 1990-07-25   | NULL | 2011-06-05  |
+|   16 | Artist Name 6| 1985-11-30   | Description 6 | 2007-10-02  |
+|   20 | Artist Name 7| 1990-01-14   | Description 7 | 2015-03-09  |
+|   21 | Artist Name 8| 1970-08-20   | Description 1 | 2020-09-25  |
+|   22 | Artist Name 9| 1989-09-18   | Description 8 | 2008-06-24  |
+
+#### song (ID, name, tempo, key, plays, duration, artist_ID, album_ID)
+
+|   ID   |       Name       | Tempo  |   Key   |  Plays  | Duration | Artist ID | Album ID |
+|-------|------------------|--------|---------|---------|----------|-----------|----------|
+|   1   |  Song Name 1     |  120   |   C#    |  2500   |  03:45    |    1    |    1     |
+|   2   |  Song Name 2     |  NULL    |   G     |  3200   |  04:10    |    2    |    2     |
+|   3   |  Song Name 3     |  110   |   D     |  1800   |  03:20    |    2    |    3     |
+|   4   |  Song Name 4     |  75    |   A     |  3100   |  04:55    |    3    |    4     |
+|   5   |  Song Name 5     |  130   |   E     |  2800   |  03:30    |    4    |    5     |
+|   6   |  Song Name 6     |  100   |   D    |  30000   |  03:10    |    5    |    6     |
+|   7   |  Song Name 6     |  100    |   D     |  30000   |  03:10    |    5    |    7     |
+|   8   |  Song Name 3     |  90   |   NULL     |  2200   |  03:40    |    6    |    8     |
+|   9   |  Song Name 7     |  80    |   A#     |  3100   |  02:14    |    1    |    1     |
+|   10   |  Song Name 8     |  125   |   E     |  2800   |  03:01    |    7    |    9     |
+
+#### album (ID, name, record_label, genre, release_date, classification, duration, artist_ID)
+
+|   ID   |      Name      | Record Label |    Genre    | Release Date | Classification | Duration | Artist ID |
+|-------|----------------|--------------|-------------|--------------|----------------|----------|-----------|
+|   1   |  Album Name 1  | Label 1      | Rock        | 2023-01-15   | EP           | 45:30    |    1    |
+|   2   |  Album Name 2  | Label 2      | Pop         | 2022-05-20   | Album       | 37:45    |    2    |
+|   3   |  Album Name 3  | Label 3      | Hip-Hop     | 2021-11-10   | Single         | 52:15    |    3    |
+|   4   |  Album Name 4  | Label 4      | Jazz        | 2023-03-02   | Collection           | 61:10    |    4    |
+|   5   |  Album Name 5  | Label 5      | Electronic  | 2022-08-17   | Album       | 49:20    |    5    |
+|   6   |  Album Name 1  | Label 1      | Rock        | 2023-01-15   | EP           | 45:30    |    1    |
+|   7   |  Album Name 6  | Label 1      | NULL         | 2022-05-20   | Album       | 37:45    |    6    |
+|   8   |  Album Name 7  | Label 6      | Classical     | 2021-11-10   | Single         | 03:15    |    7    |
+|   9   |  Album Name 8  | Label 7      | Jazz        | 2023-03-02   | Collection           | 61:10    |    8    |
+|   10   |  Album Name 9  | Label 8      | R&B  | 2022-08-17   | Album       | 49:20    |    5    |
+
+#### playlist (ID, name, description, duration, song_number, user_ID)
+
+|   ID   |      Name      |     Description    | Duration | Song Number | User ID |
+|-------|----------------|--------------------|----------|------------|---------|
+|   1   | Playlist Name 1 | Description 1     | 2:30:15  |    20      |   1   |
+|   2   | Playlist Name 2 | Description 2     | 1:45:40  |    15      |   1   |
+|   3   | Playlist Name 3 | Description 3     | 3:10:22  |    30      |   2   |
+|   4   | Playlist Name 4 | Description 4     | 1:15:50  |    12      |   3   |
+|   5   | Playlist Name 5 | Description 5     | 4:05:30  |    40      |   4   |
+|   6   | Playlist Name 5 | NULL     | 2:30:15  |    20      |   5   |
+|   7   | Playlist Name 6 | Description 6     | 0:3:40  |    1      |   6   |
+|   8   | Playlist Name 7 | Description 3     | 3:53:22  |    25      |   6   |
+|   9   | Playlist Name 8 | Description 7     | 1:06:50  |    10      |   6   |
+|   10   | Playlist Name 9 | Description 8     | 5:05:30  |    51      |   7   |
+
+
+#### artist_song (ID, artist_ID, song_ID)
+
+|   ID   | Artist ID | Song ID |
+|-------|----------|---------|
+|   1   |   1    |   1     |
+|   2   |   1    |   2     |
+|   3   |   2    |   2     |
+|   4   |   2    |   3     |
+|   5   |   2    |   4     |
+|   6   |   2    |   5     |
+|   7   |   3    |   1     |
+|   8   |   3    |   6     |
+|   9   |   4    |   7     |
+|   10   |   4    |   8     |
+
+#### artist_album (ID, artist_ID, album_ID)
+
+|   ID   | Artist ID | Album ID |
+|-------|----------|---------|
+|   1   |   1    |   1     |
+|   2   |   1    |   2     |
+|   3   |   2    |   2     |
+|   4   |   2    |   3     |
+|   5   |   2    |   4     |
+|   6   |   2    |   5     |
+|   7   |   3    |   1     |
+|   8   |   3    |   6     |
+|   9   |   4    |   7     |
+|   10   |   4    |   8     |
+
+
+#### playlist_song (ID, playlist_ID, song_ID)
+
+|   ID   | Playlist ID | Song ID |
+|-------|----------|---------|
+|   1   |   1    |   1     |
+|   2   |   1    |   2     |
+|   3   |   1    |   3     |
+|   4   |   1    |   4     |
+|   5   |   2    |   1     |
+|   6   |   2    |   3     |
+|   7   |   2    |   5     |
+|   8   |   2    |   6     |
+|   9   |   4    |   7     |
+|   10   |   4    |   8     |
+
+####  following (ID, follower_ID, following_ID)
+
+|   ID   | Follower ID | Following ID |
+|-------|----------|---------|
+|   1   |   1    |   1     |
+|   2   |   1    |   2     |
+|   3   |   1    |   3     |
+|   4   |   1    |   4     |
+|   5   |   1    |   5     |
+|   6   |   2    |   1     |
+|   7   |   2    |   3     |
+|   8   |   2    |   6     |
+|   9   |   2    |   7     |
+|   10   |   4    |   8     |
+
+# Project schedule
+
+```{mermaid}
+gantt
+    title Project Schedule
+    dateFormat MM-DD
+    axisFormat %b %d
+    Deliverable 4 : done, milestone, m1, 10-15, 10-15
+    section Deliverable 5
+        Work on database:done,a1, 10-20, 11-03
+        Status report 1 :done,a1, 10-27, 11-03
+        Deliverable 5 : done,milestone, m1, 11-03, 11-03
+    section Deliverable 6
+        Work on database:done,a1, 11-03, 11-17
+        Status report 2 :done, a1, 11-10, 11-17
+        Deliverable 6 : done, milestone, m1, 11-17, 11-17
+    section Deliverable 7
+        Work on database:done,a2, 11-17, 12-01
+        API definition  :done,a2, 12-01, 12-08
+        API demonstration:done, a2, 12-01, 12-08
+        Reflection:done, a2, 12-04, 12-08
+        Record zoom video:done, milestone, a2, 12-09, 12-09
+        Make README.md  :done,a2, 12-08, 12-11
+        Deliverable 7 : done, milestone, m1, 12-11, 12-11
+```

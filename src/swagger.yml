@@ -1,0 +1,21 @@
+# swagger.yml
+
+openapi: 3.0.0
+info:
+  title: "Music Flask REST API"
+  description: "An API about music"
+  version: "1.0.0"
+
+servers:
+  - url: "/api"
+
+paths:
+  /users:
+    get:
+      operationId: "get_users"
+      tags:
+        -  "Users"
+      summary: "Get the list of users"
+      responses:
+        "200":
+          description: "Successfully retrieved the list of users"
