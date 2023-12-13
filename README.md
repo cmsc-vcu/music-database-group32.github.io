@@ -9,9 +9,6 @@ format:
 ---
 # Music Database 
 
-- update readme
-- add videos and html links 
-
 ## Description
 
 This final report serves as an extension to deliverable 4. It covers everything about our project, from the beginning to the end. It includes important things like the project description, analysis of the problem, diagrams, schemas, notes on normalization, queries, sample data, API definition, SQL code, thoughts about the future, what the team thinks, and links to GitHub, videos, HTML, and more.
